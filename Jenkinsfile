@@ -16,7 +16,18 @@ pipeline {
     stages {
         stage('Checkout from GitHub') {
             steps {
-                git url: params.GIT_URL, branch: params.GIT_BRANCH
+                script {
+                    if (params.GIT_URL && !params.GIT_URL.contains('<your-username>')) {
+                        try {
+                            git url: params.GIT_URL, branch: params.GIT_BRANCH
+                        } catch (Exception e) {
+                            echo "Direct git checkout using ${params.GIT_URL} failed (${e.getMessage()}). Falling back to configured SCM repository."
+                            checkout scm
+                        }
+                    } else {
+                        checkout scm
+                    }
+                }
             }
         }
 
@@ -78,7 +89,12 @@ pipeline {
             steps {
                 catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
                     bat '''
-                        docker run --rm -v //var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --severity HIGH,CRITICAL --exit-code 1 --no-progress %IMAGE% > trivy-report.txt 2>&1
+                        where trivy >nul 2>&1
+                        if not errorlevel 1 (
+                            trivy image --severity HIGH,CRITICAL --exit-code 1 --no-progress %IMAGE% > trivy-report.txt 2>&1
+                        ) else (
+                            docker run --rm -v //var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --severity HIGH,CRITICAL --exit-code 1 --no-progress %IMAGE% > trivy-report.txt 2>&1
+                        )
                         set RC=%ERRORLEVEL%
                         type trivy-report.txt
                         exit /b %RC%
@@ -111,16 +127,14 @@ pipeline {
                     echo Kubernetes context: %K8S_CONTEXT%
                     if /I "%K8S_CONTEXT%"=="minikube" minikube image load %IMAGE%
                     if /I "%K8S_CONTEXT%"=="kind-kind" kind load docker-image %IMAGE%
-                    if /I "%K8S_CONTEXT%"=="docker-desktop" (
-                        docker inspect desktop-control-plane >nul 2>&1
-                        if not errorlevel 1 (
-                            echo Loading %IMAGE% into desktop-control-plane...
-                            docker save -o k8s_image.tar %IMAGE%
-                            docker cp k8s_image.tar desktop-control-plane:/k8s_image.tar
-                            docker exec desktop-control-plane ctr -n k8s.io images import /k8s_image.tar
-                            docker exec desktop-control-plane rm -f /k8s_image.tar
-                            del /f /q k8s_image.tar
-                        )
+                    docker inspect desktop-control-plane >nul 2>&1
+                    if not errorlevel 1 (
+                        echo Loading %IMAGE% into desktop-control-plane...
+                        docker save -o k8s_image.tar %IMAGE%
+                        docker cp k8s_image.tar desktop-control-plane:/k8s_image.tar
+                        docker exec desktop-control-plane ctr -n k8s.io images import /k8s_image.tar
+                        docker exec desktop-control-plane rm -f /k8s_image.tar
+                        del /f /q k8s_image.tar
                     )
                     exit /b 0
                 '''
