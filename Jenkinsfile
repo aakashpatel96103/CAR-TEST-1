@@ -81,6 +81,15 @@ pipeline {
                         if /I "%%C"=="minikube" minikube image load %IMAGE%
                         if /I "%%C"=="kind-kind" kind load docker-image %IMAGE%
                     )
+                    docker inspect desktop-control-plane >nul 2>&1
+                    if not errorlevel 1 (
+                        echo Loading %IMAGE% into desktop-control-plane...
+                        docker save -o k8s_image.tar %IMAGE%
+                        docker cp k8s_image.tar desktop-control-plane:/k8s_image.tar
+                        docker exec desktop-control-plane ctr -n k8s.io images import /k8s_image.tar
+                        docker exec desktop-control-plane rm -f /k8s_image.tar
+                        del /f /q k8s_image.tar
+                    )
                     docker image inspect %IMAGE% >nul
                     if errorlevel 1 exit /b 1
                 '''
