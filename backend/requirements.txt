@@ -1,0 +1,6 @@
+fastapi
+uvicorn[standard]
+prometheus-client
+prometheus-fastapi-instrumentator
+pytest
+httpx
