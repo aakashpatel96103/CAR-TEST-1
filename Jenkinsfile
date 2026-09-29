@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     parameters {
-        string(name: 'GIT_URL', defaultValue: 'https://github.com/<your-username>/vehicle-rental-devops.git', description: 'GitHub repository URL')
+        string(name: 'GIT_URL', defaultValue: 'https://github.com/aakashpatel96103/CAR-TEST-1.git', description: 'GitHub repository URL')
         string(name: 'GIT_BRANCH', defaultValue: 'main', description: 'Branch to build')
     }
 
