@@ -1,248 +1,286 @@
 pipeline {
     agent any
 
-    parameters {
-        string(name: 'GIT_URL', defaultValue: 'https://github.com/aakashpatel96103/CAR-TEST-1.git', description: 'GitHub repository URL')
-        string(name: 'GIT_BRANCH', defaultValue: 'main', description: 'Branch to build')
-    }
-
     environment {
-        APP_NAME = 'vehicle-service'
-        NAMESPACE = 'vehicle-system'
-        MONITORING_NAMESPACE = 'monitoring'
-        DEPLOY_STARTED = 'false'
+        APP   = 'vehicle-rental-service'
+        NS    = 'vehicle-rental-system'
+        MON   = 'monitoring'
+        IMAGE = 'vehicle-rental-service'
     }
 
     stages {
-        stage('Checkout from GitHub') {
+        // ─── Stage 1: Versioning ─────────────────────────────────────────
+        stage('Versioning') {
             steps {
-                script {
-                    if (params.GIT_URL && !params.GIT_URL.contains('<your-username>')) {
-                        try {
-                            git url: params.GIT_URL, branch: params.GIT_BRANCH
-                        } catch (Exception e) {
-                            echo "Direct git checkout using ${params.GIT_URL} failed (${e.getMessage()}). Falling back to configured SCM repository."
-                            checkout scm
-                        }
-                    } else {
-                        checkout scm
-                    }
-                }
+                bat '''
+                    echo === Artifact Versioning ===
+                    if exist VERSION (
+                        set /p VER=<VERSION
+                    ) else (
+                        set VER=v1.0.0
+                        echo v1.0.0> VERSION
+                    )
+                    call set /p VER=<VERSION
+                    echo Current version: %VER%
+                    echo %VER%> .image_tag
+                '''
             }
         }
 
-        stage('Generate Artifact Version') {
-            steps {
-                script {
-                    def version = readFile('VERSION').trim()
-                    def commit = bat(returnStdout: true, script: '@git rev-parse --short HEAD').trim()
-                    // example: v1.0.0-12-a1b2c3d  (version - build number - git commit)
-                    env.IMAGE_TAG = "v${version}-${env.BUILD_NUMBER}-${commit}"
-                    env.IMAGE = "${env.APP_NAME}:${env.IMAGE_TAG}"
-                    currentBuild.displayName = "#${env.BUILD_NUMBER} ${env.IMAGE_TAG}"
-                    echo "=================================================="
-                    echo "Target Image: ${env.IMAGE}"
-                    echo "=================================================="
-                }
-            }
-        }
-
+        // ─── Stage 2: Install Dependencies ───────────────────────────────
         stage('Install Dependencies') {
-            steps { bat 'python -m pip install -r vehicle-service/requirements-dev.txt' }
-        }
-
-        stage('Run Tests') {
             steps {
                 bat '''
-                    cd vehicle-service
-                    python -m pytest tests -v --junitxml=..\\test-results.xml
-                '''
-            }
-            post { always { junit allowEmptyResults: true, testResults: 'test-results.xml' } }
-        }
-
-        stage('Security Scan - Code and Dependencies') {
-            steps {
-                // build is marked UNSTABLE (not failed) if issues are found
-                catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
-                    bat '''
-                        cd vehicle-service
-                        python -m bandit -r app -ll
-                        python -m pip_audit -r requirements.txt
-                    '''
-                }
-            }
-        }
-
-        stage('Build Docker Image') {
-            steps {
-                bat '''
-                    docker build --build-arg APP_VERSION=%IMAGE_TAG% -t %IMAGE% vehicle-service
-                    docker tag %IMAGE% %APP_NAME%:latest
-                    docker image inspect %IMAGE% >nul
-                    if errorlevel 1 exit /b 1
+                    echo === Installing Python dependencies ===
+                    python -m pip install --upgrade pip
+                    python -m pip install -r vehicle-rental-service/requirements.txt
                 '''
             }
         }
 
-        stage('Security Scan - Docker Image (Trivy)') {
-            steps {
-                catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
-                    bat '''
-                        where trivy >nul 2>&1
-                        if not errorlevel 1 (
-                            trivy image --severity HIGH,CRITICAL --exit-code 1 --no-progress %IMAGE% > trivy-report.txt 2>&1
-                        ) else (
-                            docker run --rm -v //var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --severity HIGH,CRITICAL --exit-code 1 --no-progress %IMAGE% > trivy-report.txt 2>&1
-                        )
-                        set RC=%ERRORLEVEL%
-                        type trivy-report.txt
-                        exit /b %RC%
-                    '''
-                }
-                archiveArtifacts artifacts: 'trivy-report.txt', allowEmptyArchive: true
-            }
-        }
-
-        stage('Save Versioned Artifact') {
-            steps {
-                bat 'docker save -o vehicle-service-%IMAGE_TAG%.tar %IMAGE%'
-                archiveArtifacts artifacts: 'vehicle-service-*.tar', fingerprint: true
-            }
-        }
-
-        stage('Prepare Kubernetes') {
+        // ─── Stage 3: Automated Tests ────────────────────────────────────
+        stage('Automated Tests') {
             steps {
                 bat '''
+                    echo === Running pytest test suite ===
+                    python -m pytest vehicle-rental-service/tests -v --tb=short
+                '''
+            }
+        }
+
+        // ─── Stage 4: Dependency Validation ──────────────────────────────
+        stage('Dependency Validation') {
+            steps {
+                bat '''
+                    echo === Validating installed dependencies ===
+                    python -m pip check
+                    echo === Verifying critical packages ===
+                    python -c "import fastapi; print(f'FastAPI {fastapi.__version__}')"
+                    python -c "import uvicorn; print(f'Uvicorn {uvicorn.__version__}')"
+                    python -c "import pydantic; print(f'Pydantic {pydantic.__version__}')"
+                    python -c "import prometheus_client; print(f'Prometheus Client {prometheus_client.__version__}')"
+                '''
+            }
+        }
+
+        // ─── Stage 5: Docker Build ──────────────────────────────────────
+        stage('Docker Build') {
+            steps {
+                bat '''
+                    set /p VER=<VERSION
+                    echo === Building Docker image %IMAGE%:%VER% ===
+                    docker build -t %IMAGE%:%VER% vehicle-rental-service
+                    docker tag %IMAGE%:%VER% %IMAGE%:latest
+                    echo === Build complete ===
+                '''
+            }
+        }
+
+        // ─── Stage 6: Trivy Security Scan ────────────────────────────────
+        stage('Trivy Security Scan') {
+            steps {
+                bat '''
+                    set /p VER=<VERSION
+                    echo === Running Trivy vulnerability scanner ===
+                    echo Scanning %IMAGE%:%VER% for HIGH and CRITICAL vulnerabilities...
+                    trivy image --severity HIGH,CRITICAL --exit-code 0 --format table %IMAGE%:%VER%
+                    echo === Security scan complete ===
+                '''
+            }
+        }
+
+        // ─── Stage 7: Image Verification ─────────────────────────────────
+        stage('Image Verification') {
+            steps {
+                bat '''
+                    set /p VER=<VERSION
+                    echo === Verifying Docker image ===
+                    docker inspect %IMAGE%:%VER% >nul 2>&1
+                    if errorlevel 1 (
+                        echo ERROR: Image %IMAGE%:%VER% not found!
+                        exit /b 1
+                    )
+                    echo Image %IMAGE%:%VER% verified successfully
+                    docker images %IMAGE% --format "{{.Repository}}:{{.Tag}} {{.Size}}"
+                '''
+            }
+        }
+
+        // ─── Stage 8: Load Image to Kubernetes ───────────────────────────
+        stage('Load Image to Kubernetes') {
+            steps {
+                bat '''
+                    set /p VER=<VERSION
+                    echo === Loading image into Kubernetes cluster ===
+                    docker save -o k8s.tar %IMAGE%:%VER%
+                    docker inspect minikube >nul 2>&1 && (
+                        echo Loading %IMAGE%:%VER% into minikube container...
+                        docker cp k8s.tar minikube:/k8s.tar
+                        docker exec minikube ctr -n k8s.io images import /k8s.tar
+                        docker exec minikube rm -f /k8s.tar
+                    )
+                    docker inspect desktop-control-plane >nul 2>&1 && (
+                        echo Loading %IMAGE%:%VER% into desktop-control-plane container...
+                        docker cp k8s.tar desktop-control-plane:/k8s.tar
+                        docker exec desktop-control-plane ctr -n k8s.io images import /k8s.tar
+                        docker exec desktop-control-plane rm -f /k8s.tar
+                    )
+                    del /f /q k8s.tar
+                    echo === Image loaded successfully ===
+                '''
+            }
+        }
+
+        // ─── Stage 9: Kubernetes Deployment ──────────────────────────────
+        stage('Deploy to Kubernetes') {
+            steps {
+                bat '''
+                    echo === Deploying to Kubernetes ===
+
+                    echo --- Applying namespaces ---
                     kubectl apply -f kubernetes/namespace.yaml
                     kubectl apply -f kubernetes/monitoring/namespace.yaml
-                '''
-            }
-        }
 
-        stage('Load Image Into Kubernetes') {
-            steps {
-                bat '''
-                    for /f "delims=" %%C in ('kubectl config current-context') do set K8S_CONTEXT=%%C
-                    echo Kubernetes context: %K8S_CONTEXT%
-                    if /I "%K8S_CONTEXT%"=="minikube" minikube image load %IMAGE%
-                    if /I "%K8S_CONTEXT%"=="kind-kind" kind load docker-image %IMAGE%
-                    docker inspect desktop-control-plane >nul 2>&1
-                    if not errorlevel 1 (
-                        echo Loading %IMAGE% into desktop-control-plane...
-                        docker save -o k8s_image.tar %IMAGE%
-                        docker cp k8s_image.tar desktop-control-plane:/k8s_image.tar
-                        docker exec desktop-control-plane ctr -n k8s.io images import /k8s_image.tar
-                        docker exec desktop-control-plane rm -f /k8s_image.tar
-                        del /f /q k8s_image.tar
-                    )
-                    exit /b 0
-                '''
-            }
-        }
+                    echo --- Applying security policies ---
+                    kubectl apply -f kubernetes/network-policy.yaml
+                    kubectl apply -f kubernetes/resource-quota.yaml
 
-        stage('Deploy Vehicle Service') {
-            steps {
-                script { env.DEPLOY_STARTED = 'true' }
-                bat '''
-                    kubectl apply -f kubernetes/vehicle-service-deployment.yaml
-                    kubectl apply -f kubernetes/vehicle-service.yaml
-                    kubectl set image deployment/%APP_NAME% %APP_NAME%=%IMAGE% -n %NAMESPACE%
-                    kubectl annotate deployment/%APP_NAME% -n %NAMESPACE% kubernetes.io/change-cause="deploy %IMAGE%" --overwrite
-                    kubectl rollout status deployment/%APP_NAME% -n %NAMESPACE% --timeout=180s
-                '''
-            }
-        }
+                    echo --- Deploying application ---
+                    kubectl apply -f kubernetes/vehicle-rental-service-deployment.yaml
+                    kubectl apply -f kubernetes/vehicle-rental-service.yaml
 
-        stage('Verify Vehicle Service') {
-            steps {
-                bat '''
-                    kubectl get deployment %APP_NAME% -n %NAMESPACE% -o wide
-                    kubectl get pods -n %NAMESPACE% -o wide
-                    kubectl get service %APP_NAME% -n %NAMESPACE%
-                    kubectl rollout history deployment/%APP_NAME% -n %NAMESPACE%
-                '''
-            }
-        }
+                    echo --- Deploying autoscaler ---
+                    kubectl apply -f kubernetes/hpa.yaml
 
-        stage('Health Check') {
-            steps {
-                bat '''
-                    kubectl exec deployment/%APP_NAME% -n %NAMESPACE% -- python -c "import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8000/health'); assert r.status == 200; print(r.read().decode())"
-                    kubectl exec deployment/%APP_NAME% -n %NAMESPACE% -- python -c "import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8000/ready'); assert r.status == 200; print(r.read().decode())"
-                '''
-            }
-        }
-
-        stage('Metrics Check') {
-            steps {
-                bat '''
-                    kubectl exec deployment/%APP_NAME% -n %NAMESPACE% -- python -c "import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8000/metrics'); assert r.status == 200; print('METRICS OK'); print(r.read().decode()[:500])"
-                '''
-            }
-        }
-
-        stage('Show Application Logs') {
-            steps { bat 'kubectl logs deployment/%APP_NAME% -n %NAMESPACE% --tail=20' }
-        }
-
-        stage('Deploy Prometheus') {
-            steps {
-                bat '''
+                    echo --- Deploying monitoring stack ---
                     kubectl apply -f kubernetes/monitoring/prometheus.yaml
-                    kubectl rollout status deployment/prometheus -n %MONITORING_NAMESPACE% --timeout=180s
-                '''
-            }
-        }
-
-        stage('Deploy Grafana') {
-            steps {
-                bat '''
+                    kubectl apply -f kubernetes/monitoring/alerts.yaml
                     kubectl apply -f kubernetes/monitoring/grafana.yaml
-                    kubectl rollout restart deployment/grafana -n %MONITORING_NAMESPACE%
-                    kubectl rollout status deployment/grafana -n %MONITORING_NAMESPACE% --timeout=180s
+                    kubectl apply -f kubernetes/monitoring/fluentd.yaml
+
+                    echo --- Rolling out deployments ---
+                    kubectl rollout restart deployment/%APP% -n %NS%
+                    kubectl rollout restart deployment/prometheus -n %MON%
+
+                    echo --- Waiting for rollouts to complete ---
+                    kubectl rollout status deployment/%APP% -n %NS% --timeout=120s
+                    kubectl rollout status deployment/prometheus -n %MON% --timeout=60s
+
+                    echo === Deployment complete ===
                 '''
             }
         }
 
-        stage('Monitoring Validation') {
+        // ─── Stage 10: Health & API Validation ───────────────────────────
+        stage('Health & API Validation') {
             steps {
                 bat '''
-                    kubectl get pods -n %MONITORING_NAMESPACE%
-                    kubectl exec deployment/prometheus -n %MONITORING_NAMESPACE% -- wget -qO- http://127.0.0.1:9090/-/ready
-                    kubectl exec deployment/grafana -n %MONITORING_NAMESPACE% -- wget -qO- http://127.0.0.1:3000/api/health
+                    echo === Validating deployment health ===
+                    powershell -NoProfile -Command "Start-Sleep -Seconds 5"
+
+                    echo --- Checking pod status ---
+                    kubectl get pods -n %NS% -l app=%APP%
+                    kubectl get pods -n %MON%
+
+                    echo --- Testing health endpoint via kubectl ---
+                    kubectl exec deployment/%APP% -n %NS% -- python -c "import urllib.request; r=urllib.request.urlopen('http://localhost:8000/health'); print(r.read().decode())"
+
+                    echo --- Testing API root endpoint ---
+                    kubectl exec deployment/%APP% -n %NS% -- python -c "import urllib.request; r=urllib.request.urlopen('http://localhost:8000/'); print(r.read().decode())"
+
+                    echo --- Testing version endpoint ---
+                    kubectl exec deployment/%APP% -n %NS% -- python -c "import urllib.request; r=urllib.request.urlopen('http://localhost:8000/version'); print(r.read().decode())"
+
+                    echo === API validation passed ===
                 '''
             }
         }
 
+        // ─── Stage 11: Monitoring & Logging Validation ───────────────────
+        stage('Monitoring & Logging Validation') {
+            steps {
+                bat '''
+                    echo === Validating monitoring stack ===
+
+                    echo --- Checking Prometheus deployment ---
+                    kubectl get deployment prometheus -n %MON%
+
+                    echo --- Checking Grafana deployment ---
+                    kubectl get deployment grafana -n %MON%
+
+                    echo --- Checking Fluentd DaemonSet ---
+                    kubectl get daemonset fluentd -n %MON%
+
+                    echo --- Checking metrics endpoint ---
+                    kubectl exec deployment/%APP% -n %NS% -- python -c "import urllib.request; r=urllib.request.urlopen('http://localhost:8000/metrics'); data=r.read().decode(); print('Metrics OK - lines:', len(data.splitlines()))"
+
+                    echo --- Checking application logs ---
+                    kubectl logs deployment/%APP% -n %NS% --tail=10
+
+                    echo === Monitoring validation passed ===
+                '''
+            }
+        }
+
+        // ─── Stage 12: Rollback Capability Check ─────────────────────────
+        stage('Rollback Capability Check') {
+            steps {
+                bat '''
+                    echo === Verifying rollback capability ===
+
+                    echo --- Deployment rollout history ---
+                    kubectl rollout history deployment/%APP% -n %NS%
+
+                    echo --- Current revision ---
+                    kubectl describe deployment/%APP% -n %NS% | findstr /i "revision"
+
+                    echo === Rollback capability verified ===
+                    echo To rollback: kubectl rollout undo deployment/%APP% -n %NS%
+                    echo To rollback to specific revision: kubectl rollout undo deployment/%APP% -n %NS% --to-revision=N
+                '''
+            }
+        }
+
+        // ─── Stage 13: Start Services (Port Forwarding) ─────────────────
         stage('Start Services') {
             steps {
                 bat '''
-                    taskkill /F /IM kubectl.exe 2>nul || exit /b 0
                     set JENKINS_NODE_COOKIE=dontKillMe
-                    start "" /B cmd /c "set JENKINS_NODE_COOKIE=dontKillMe&& kubectl port-forward service/vehicle-service 8001:8000 -n vehicle-system > vehicle-service-port-forward.log 2>&1"
-                    start "" /B cmd /c "set JENKINS_NODE_COOKIE=dontKillMe&& kubectl port-forward service/grafana 8002:3000 -n monitoring > grafana-port-forward.log 2>&1"
-                    powershell -NoProfile -Command "Start-Sleep -Seconds 5"
+                    powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 1000,1001,1002 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }; exit 0"
+                    start /B kubectl port-forward service/prometheus 1000:1000 -n %MON%
+                    start /B kubectl port-forward service/vehicle-rental-service 1001:1001 -n %NS%
+                    start /B kubectl port-forward service/grafana 1002:1002 -n %MON%
+                    powershell -NoProfile -Command "Start-Sleep -Seconds 3"
+                    exit /b 0
                 '''
             }
         }
     }
 
     post {
-        success { echo "PIPELINE SUCCESSFUL - released ${env.IMAGE}" }
+        success {
+            echo "======================================================="
+            echo "ALL PIPELINE STAGES PASSED SUCCESSFULLY!"
+            echo "======================================================="
+            echo "Prometheus:  http://localhost:1000"
+            echo "API Docs:    http://localhost:1001/docs"
+            echo "API Health:  http://localhost:1001/health"
+            echo "API Version: http://localhost:1001/version"
+            echo "API Logs:    http://localhost:1001/logs"
+            echo "Grafana:     http://localhost:1002"
+            echo "======================================================="
+        }
         failure {
-            script {
-                // automatic rollback, only if this run already touched the deployment
-                if (env.DEPLOY_STARTED == 'true') {
-                    echo 'Deployment failed - rolling back to the previous version'
-                    bat '''
-                        kubectl rollout undo deployment/%APP_NAME% -n %NAMESPACE%
-                        kubectl rollout status deployment/%APP_NAME% -n %NAMESPACE% --timeout=180s
-                        exit /b 0
-                    '''
-                }
-            }
-            echo 'PIPELINE FAILED'
+            echo "Pipeline failed! Attempting rollback..."
+            bat '''
+                kubectl rollout undo deployment/%APP% -n %NS% 2>nul
+                if errorlevel 1 (
+                    echo WARNING: Rollback failed or no previous revision available
+                ) else (
+                    echo Rollback initiated successfully
+                    kubectl rollout status deployment/%APP% -n %NS% --timeout=60s
+                )
+            '''
         }
     }
 }

@@ -14,6 +14,8 @@ data:
         url: http://prometheus.monitoring.svc.cluster.local:9090
         isDefault: true
         editable: true
+        jsonData:
+          timeInterval: 5s
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -36,184 +38,638 @@ data:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: grafana-dashboard-vehicle
+  name: grafana-dashboard-vehicle-rental
   namespace: monitoring
 data:
   vehicle-rental.json: |
     {
-      "title": "Vehicle Rental Monitoring",
-      "uid": "vehicle-rental",
-      "editable": true,
-      "schemaVersion": 39,
-      "refresh": "10s",
-      "time": {
-        "from": "now-30m",
-        "to": "now"
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": {
+              "type": "grafana",
+              "uid": "-- Grafana --"
+            },
+            "enable": true,
+            "hide": true,
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
       },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 1,
+      "id": null,
+      "links": [],
+      "liveNow": false,
       "panels": [
         {
-          "id": 1,
-          "type": "timeseries",
-          "title": "Requests per second (by endpoint)",
-          "gridPos": {
-            "x": 0,
-            "y": 0,
-            "w": 12,
-            "h": 8
-          },
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum(rate(http_requests_total[1m])) by (handler)",
-              "legendFormat": "{{handler}}"
-            }
-          ]
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+          "id": 100,
+          "title": "Application Overview",
+          "type": "row"
         },
         {
-          "id": 2,
-          "type": "timeseries",
-          "title": "p95 latency (seconds)",
-          "gridPos": {
-            "x": 12,
-            "y": 0,
-            "w": 12,
-            "h": 8
-          },
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[1m])) by (le))",
-              "legendFormat": "p95"
-            }
-          ]
-        },
-        {
-          "id": 3,
-          "type": "timeseries",
-          "title": "Responses by status (per second)",
-          "gridPos": {
-            "x": 0,
-            "y": 8,
-            "w": 12,
-            "h": 8
-          },
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum(rate(http_requests_total[1m])) by (status)",
-              "legendFormat": "{{status}}"
-            }
-          ]
-        },
-        {
-          "id": 4,
-          "type": "timeseries",
-          "title": "5xx errors per second",
-          "gridPos": {
-            "x": 12,
-            "y": 8,
-            "w": 12,
-            "h": 8
-          },
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum(rate(http_requests_total{status=\"5xx\"}[1m]))",
-              "legendFormat": "5xx"
-            }
-          ]
-        },
-        {
-          "id": 5,
-          "type": "stat",
-          "title": "Active bookings",
-          "gridPos": {
-            "x": 0,
-            "y": 16,
-            "w": 8,
-            "h": 6
-          },
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum(active_bookings)"
-            }
-          ]
-        },
-        {
-          "id": 6,
-          "type": "stat",
-          "title": "Bookings created (total)",
-          "gridPos": {
-            "x": 8,
-            "y": 16,
-            "w": 8,
-            "h": 6
-          },
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "sum(bookings_created_total)"
-            }
-          ]
-        },
-        {
-          "id": 7,
-          "type": "stat",
-          "title": "Running version",
-          "gridPos": {
-            "x": 16,
-            "y": 16,
-            "w": 8,
-            "h": 6
-          },
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
-            {
-              "refId": "A",
-              "expr": "app_info",
-              "legendFormat": "{{version}}"
-            }
-          ],
-          "options": {
-            "textMode": "name",
-            "reduceOptions": {
-              "calcs": [
-                "lastNotNull"
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "mappings": [
+                {
+                  "options": {
+                    "0": { "color": "red", "text": "DOWN" },
+                    "1": { "color": "green", "text": "UP" }
+                  },
+                  "type": "value"
+                }
               ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "red", "value": null },
+                  { "color": "green", "value": 1 }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 5, "w": 6, "x": 0, "y": 1 },
+          "id": 1,
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": ["lastNotNull"],
               "fields": "",
               "values": false
+            },
+            "textMode": "auto"
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "editorMode": "code",
+              "expr": "up{job=~\"vehicle-rental-service|vehicle-rental-service\"}",
+              "instant": true,
+              "legendFormat": "Service Status",
+              "range": false,
+              "refId": "A"
             }
-          }
+          ],
+          "title": "Vehicle Rental Service Status",
+          "type": "stat"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "blue", "value": null }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 5, "w": 6, "x": 6, "y": 1 },
+          "id": 2,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": ["lastNotNull"],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "editorMode": "code",
+              "expr": "sum(http_requests_total{job=~\"vehicle-rental-service|vehicle-rental-service\", handler!~\"/health|/metrics\"}) or vector(0)",
+              "instant": true,
+              "legendFormat": "Total User Requests",
+              "range": false,
+              "refId": "A"
+            }
+          ],
+          "title": "Total User Requests",
+          "type": "stat"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "mappings": [],
+              "noValue": "0",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 100 },
+                  { "color": "red", "value": 500 }
+                ]
+              },
+              "unit": "ms"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 5, "w": 6, "x": 12, "y": 1 },
+          "id": 3,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": ["lastNotNull"],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "editorMode": "code",
+              "expr": "(((sum(rate(http_request_duration_seconds_sum{job=~\"vehicle-rental-service|vehicle-rental-service\", handler!~\"/health|/metrics\"}[5m])) / sum(rate(http_request_duration_seconds_count{job=~\"vehicle-rental-service|vehicle-rental-service\", handler!~\"/health|/metrics\"}[5m]))) * 1000) > 0) or (sum(http_request_duration_seconds_sum{job=~\"vehicle-rental-service|vehicle-rental-service\", handler!~\"/health|/metrics\"}) / sum(http_request_duration_seconds_count{job=~\"vehicle-rental-service|vehicle-rental-service\", handler!~\"/health|/metrics\"}) * 1000) or vector(0)",
+              "instant": true,
+              "legendFormat": "Avg Latency",
+              "range": false,
+              "refId": "A"
+            }
+          ],
+          "title": "Average Request Latency",
+          "type": "stat"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "purple", "value": null }
+                ]
+              },
+              "unit": "bytes"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 5, "w": 6, "x": 18, "y": 1 },
+          "id": 4,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": ["lastNotNull"],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "auto"
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "editorMode": "code",
+              "expr": "process_resident_memory_bytes{job=~\"vehicle-rental-service|vehicle-rental-service\"}",
+              "instant": true,
+              "legendFormat": "Memory",
+              "range": false,
+              "refId": "A"
+            }
+          ],
+          "title": "Memory Usage (RSS)",
+          "type": "stat"
+        },
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 },
+          "id": 101,
+          "title": "Traffic & Throughput Analysis",
+          "type": "row"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "fillOpacity": 20,
+                "gradientMode": "opacity",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "showPoints": "auto",
+                "spanNulls": false
+              },
+              "unit": "reqps"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 7 },
+          "id": 5,
+          "options": {
+            "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+            "tooltip": { "mode": "multi", "sort": "desc" }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "editorMode": "code",
+              "expr": "sum(rate(http_requests_total{job=~\"vehicle-rental-service|vehicle-rental-service\", handler!~\"/health|/metrics\"}[1m])) or vector(0)",
+              "legendFormat": "Request Rate (QPS)",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Request Throughput",
+          "type": "timeseries"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "fillOpacity": 15,
+                "gradientMode": "none",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "showPoints": "auto",
+                "spanNulls": false
+              },
+              "unit": "reqps"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 7 },
+          "id": 6,
+          "options": {
+            "legend": { "calcs": ["mean", "last"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+            "tooltip": { "mode": "multi", "sort": "desc" }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "editorMode": "code",
+              "expr": "sum by (handler) (rate(http_requests_total{job=~\"vehicle-rental-service|vehicle-rental-service\", handler!~\"/health|/metrics\"}[1m]))",
+              "legendFormat": "{{handler}}",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Requests by Endpoint",
+          "type": "timeseries"
+        },
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 15 },
+          "id": 102,
+          "title": "HTTP Status & Resource Utilization",
+          "type": "row"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "mappings": []
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 8, "x": 0, "y": 16 },
+          "id": 7,
+          "options": {
+            "displayLabels": ["percent", "value"],
+            "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "values": ["value", "percent"] },
+            "pieType": "donut",
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "tooltip": { "mode": "single", "sort": "none" }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "editorMode": "code",
+              "expr": "sum by (status) (http_requests_total{job=~\"vehicle-rental-service|vehicle-rental-service\", handler!~\"/health|/metrics\"})",
+              "instant": true,
+              "legendFormat": "Status {{status}}",
+              "range": false,
+              "refId": "A"
+            }
+          ],
+          "title": "HTTP Status Code Distribution",
+          "type": "piechart"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "fillOpacity": 15,
+                "gradientMode": "none",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "showPoints": "auto",
+                "spanNulls": false
+              },
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 8, "x": 8, "y": 16 },
+          "id": 8,
+          "options": {
+            "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+            "tooltip": { "mode": "multi", "sort": "desc" }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "editorMode": "code",
+              "expr": "sum by (handler) (rate(http_request_duration_seconds_sum{job=~\"vehicle-rental-service|vehicle-rental-service\", handler!~\"/health|/metrics\"}[1m])) / sum by (handler) (rate(http_request_duration_seconds_count{job=~\"vehicle-rental-service|vehicle-rental-service\", handler!~\"/health|/metrics\"}[1m]))",
+              "legendFormat": "{{handler}}",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Latency by Endpoint",
+          "type": "timeseries"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "fillOpacity": 20,
+                "gradientMode": "none",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "showPoints": "auto",
+                "spanNulls": false
+              },
+              "unit": "percent"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 8, "x": 16, "y": 16 },
+          "id": 9,
+          "options": {
+            "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+            "tooltip": { "mode": "multi", "sort": "desc" }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "editorMode": "code",
+              "expr": "rate(process_cpu_seconds_total{job=~\"vehicle-rental-service|vehicle-rental-service\"}[1m]) * 100",
+              "legendFormat": "CPU Usage (%)",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "CPU Utilization",
+          "type": "timeseries"
+        },
+        {
+          "collapsed": false,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 },
+          "id": 103,
+          "title": "API Endpoint Metrics & Analytics",
+          "type": "row"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": {
+                "align": "auto",
+                "cellOptions": { "type": "auto" },
+                "filterable": true
+              },
+              "mappings": []
+            },
+            "overrides": [
+              {
+                "matcher": { "id": "byName", "options": "handler" },
+                "properties": [{ "id": "displayName", "value": "API Endpoint" }]
+              },
+              {
+                "matcher": { "id": "byName", "options": "method" },
+                "properties": [{ "id": "displayName", "value": "HTTP Method" }]
+              },
+              {
+                "matcher": { "id": "byName", "options": "status" },
+                "properties": [{ "id": "displayName", "value": "Status Code" }]
+              },
+              {
+                "matcher": { "id": "byName", "options": "Value" },
+                "properties": [{ "id": "displayName", "value": "Total Invocations" }]
+              }
+            ]
+          },
+          "gridPos": { "h": 8, "w": 14, "x": 0, "y": 25 },
+          "id": 10,
+          "options": {
+            "cellHeight": "sm",
+            "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+            "showHeader": true,
+            "sortBy": [{ "desc": true, "displayName": "Total Invocations" }]
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "editorMode": "code",
+              "expr": "sum by (handler, method, status) (http_requests_total{job=~\"vehicle-rental-service|vehicle-rental-service\", handler!~\"/health|/metrics\"})",
+              "format": "table",
+              "instant": true,
+              "range": false,
+              "refId": "A"
+            }
+          ],
+          "title": "Endpoint Activity Summary",
+          "type": "table"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "palette-classic" },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "fillOpacity": 25,
+                "gradientMode": "opacity",
+                "lineInterpolation": "smooth",
+                "lineWidth": 2,
+                "pointSize": 5,
+                "showPoints": "auto",
+                "spanNulls": false
+              },
+              "unit": "reqps"
+            },
+            "overrides": []
+          },
+          "gridPos": { "h": 8, "w": 10, "x": 14, "y": 25 },
+          "id": 11,
+          "options": {
+            "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+            "tooltip": { "mode": "multi", "sort": "desc" }
+          },
+          "targets": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "editorMode": "code",
+              "expr": "sum by (handler, method) (rate(http_requests_total{job=~\"vehicle-rental-service|vehicle-rental-service\", handler!~\"/health|/metrics\"}[1m]))",
+              "legendFormat": "{{method}} {{handler}}",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Live Endpoint Traffic",
+          "type": "timeseries"
+        },
+        {
+          "collapsed": true,
+          "gridPos": { "h": 1, "w": 24, "x": 0, "y": 33 },
+          "id": 104,
+          "panels": [
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "fieldConfig": {
+                "defaults": {
+                  "color": { "mode": "palette-classic" },
+                  "mappings": [],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [{ "color": "orange", "value": null }]
+                  }
+                },
+                "overrides": []
+              },
+              "gridPos": { "h": 4, "w": 12, "x": 0, "y": 34 },
+              "id": 12,
+              "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+                "textMode": "auto"
+              },
+              "targets": [
+                {
+                  "datasource": { "type": "prometheus", "uid": "prometheus" },
+                  "editorMode": "code",
+                  "expr": "sum(http_requests_total{job=~\"vehicle-rental-service|vehicle-rental-service\", handler=\"/health\"}) or vector(0)",
+                  "instant": true,
+                  "legendFormat": "Health Probes",
+                  "range": false,
+                  "refId": "A"
+                }
+              ],
+              "title": "Liveness & Readiness Probes",
+              "type": "stat"
+            },
+            {
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "fieldConfig": {
+                "defaults": {
+                  "color": { "mode": "palette-classic" },
+                  "mappings": [],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [{ "color": "purple", "value": null }]
+                  }
+                },
+                "overrides": []
+              },
+              "gridPos": { "h": 4, "w": 12, "x": 12, "y": 34 },
+              "id": 13,
+              "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+                "textMode": "auto"
+              },
+              "targets": [
+                {
+                  "datasource": { "type": "prometheus", "uid": "prometheus" },
+                  "editorMode": "code",
+                  "expr": "sum(http_requests_total{job=~\"vehicle-rental-service|vehicle-rental-service\", handler=\"/metrics\"}) or vector(0)",
+                  "instant": true,
+                  "legendFormat": "Scrape Requests",
+                  "range": false,
+                  "refId": "A"
+                }
+              ],
+              "title": "Prometheus Metric Scrapes",
+              "type": "stat"
+            }
+          ],
+          "title": "System Probes & Background Telemetry",
+          "type": "row"
         }
-      ]
+      ],
+      "refresh": "5s",
+      "schemaVersion": 38,
+      "style": "dark",
+      "tags": ["fastapi", "prometheus", "vehicle-rental-system"],
+      "templating": { "list": [] },
+      "time": { "from": "now-15m", "to": "now" },
+      "timepicker": {},
+      "timezone": "browser",
+      "title": "Vehicle Rental System - Observability Dashboard",
+      "uid": "vehicle-rental-system-dashboard",
+      "version": 1,
+      "weekStart": ""
     }
 ---
 apiVersion: apps/v1
@@ -241,31 +697,33 @@ spec:
               value: admin
             - name: GF_SECURITY_ADMIN_PASSWORD
               value: admin
+            - name: GF_USERS_ALLOW_SIGN_UP
+              value: "false"
             - name: GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH
               value: /var/lib/grafana/dashboards/vehicle-rental.json
           readinessProbe:
             httpGet:
               path: /api/health
               port: 3000
-            initialDelaySeconds: 10
+            initialDelaySeconds: 15
             periodSeconds: 10
           volumeMounts:
-            - name: datasource
+            - name: datasource-volume
               mountPath: /etc/grafana/provisioning/datasources
-            - name: provider
+            - name: provider-volume
               mountPath: /etc/grafana/provisioning/dashboards
-            - name: dashboards
+            - name: dashboard-volume
               mountPath: /var/lib/grafana/dashboards
       volumes:
-        - name: datasource
+        - name: datasource-volume
           configMap:
             name: grafana-datasource
-        - name: provider
+        - name: provider-volume
           configMap:
             name: grafana-dashboard-provider
-        - name: dashboards
+        - name: dashboard-volume
           configMap:
-            name: grafana-dashboard-vehicle
+            name: grafana-dashboard-vehicle-rental
 ---
 apiVersion: v1
 kind: Service
@@ -276,6 +734,10 @@ spec:
   selector:
     app: grafana
   ports:
-    - port: 3000
+    - name: web
+      port: 1002
+      targetPort: 3000
+    - name: internal
+      port: 3000
       targetPort: 3000
   type: ClusterIP

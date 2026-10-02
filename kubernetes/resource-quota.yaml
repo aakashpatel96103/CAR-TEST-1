@@ -1,0 +1,13 @@
+# Resource quotas for the vehicle-rental-system namespace
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: vehicle-rental-quota
+  namespace: vehicle-rental-system
+spec:
+  hard:
+    requests.cpu: "2"
+    requests.memory: 1Gi
+    limits.cpu: "4"
+    limits.memory: 2Gi
+    pods: "10"

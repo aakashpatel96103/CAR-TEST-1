@@ -1,123 +1,192 @@
 # Vehicle Rental System – DevOps Pipeline
 
-A containerized FastAPI application to manage **vehicles, customers and bookings**, deployed to Kubernetes through a Jenkins CI/CD pipeline that pulls code from GitHub, with Prometheus + Grafana monitoring, JSON logging, security scanning, versioned artifacts and rollback.
+Version: **v1.0.0**
 
----
+A FastAPI-based Vehicle Rental System with vehicles, customers and bookings, automated CI/CD through Jenkins, Docker containerization, Kubernetes deployment, rollback support, monitoring, logging and Trivy security scanning.
 
-## Architecture Overview
+## Features
 
-- **Vehicle Service**: FastAPI REST API (SQLite database inside the pod) with `/health`, `/ready` and `/metrics`.
-- **Containerization**: Docker image tagged `vehicle-service:v<VERSION>-<build>-<git-commit>` (example `v1.0.0-12-a1b2c3d`).
-- **Orchestration**: Kubernetes namespace `vehicle-system` with liveness/readiness probes and resource limits.
-- **Monitoring**: Prometheus + Grafana in namespace `monitoring`; the dashboard is auto-provisioned.
-- **Logging**: JSON logs on stdout (`kubectl logs`).
-- **CI/CD**: Jenkins Declarative Pipeline (GitHub -> test -> scan -> build -> deploy -> verify -> rollback on failure).
+- Vehicle CRUD APIs (Create, Read, Update, Delete)
+- Customer CRUD APIs (Create, Read, Update, Delete)
+- Booking APIs with vehicle/customer validation & availability checks
+- FastAPI Swagger documentation (`/docs`)
+- Health endpoint with system stats (`/health`)
+- Version endpoint (`/version`)
+- Application log viewer (`/logs`)
+- Prometheus metrics endpoint (`/metrics`)
+- Structured JSON logging with request-ID tracing
+- Pytest automated test suite (17+ tests)
+- Multi-stage Docker build with non-root user
+- Docker image versioning via `VERSION` file
+- Jenkins CI/CD pipeline (13 stages)
+- Trivy HIGH/CRITICAL security scanning
+- Kubernetes deployment with readiness/liveness/startup probes
+- Rolling update strategy with zero-downtime deploys
+- Kubernetes rollout history and automatic rollback on failure
+- Network policies for pod-level security
+- Resource quotas and limits
+- Horizontal Pod Autoscaler (HPA)
+- Prometheus monitoring with alerting rules
+- Grafana observability dashboard (pre-configured)
+- Fluentd centralized log aggregation
+- CORS support
 
-## Project File Structure
+## Ports
+
+- Prometheus UI: **1000**
+- Vehicle Rental API / Swagger: **1001**
+- Grafana: **1002**
+- Internal container ports: 8000 (app), 9090 (prometheus), 3000 (grafana)
+
+## URLs
 
 ```text
-vehicle-rental-devops/
-├── vehicle-service/
-│   ├── app/                      # FastAPI code (main, models, schemas, database)
-│   ├── tests/test_main.py        # pytest tests
-│   ├── Dockerfile
-│   ├── requirements.txt          # runtime dependencies
-│   └── requirements-dev.txt      # + pytest, bandit, pip-audit
-├── kubernetes/
-│   ├── namespace.yaml
-│   ├── vehicle-service-deployment.yaml
-│   ├── vehicle-service.yaml
-│   └── monitoring/               # namespace, prometheus, grafana (with dashboard)
-├── scripts/rollback.bat          # manual rollback
-├── Jenkinsfile
-├── VERSION                       # 1.0.0
-└── README.md
+http://localhost:1000         (Prometheus UI & Metrics)
+http://localhost:1001/        (Vehicle Rental API)
+http://localhost:1001/docs    (Swagger UI)
+http://localhost:1001/health  (Health Check)
+http://localhost:1001/version (Version Info)
+http://localhost:1001/logs    (Application Log Viewer)
+http://localhost:1001/metrics (Application Prometheus Metrics)
+http://localhost:1002         (Grafana Observability Dashboard)
 ```
 
 ## API Endpoints
 
-| Method | Endpoint | Description |
+```text
+GET/POST           /vehicles
+GET/PUT/DELETE     /vehicles/{vehicle_id}
+
+GET/POST           /customers
+GET/PUT/DELETE     /customers/{customer_id}
+
+GET/POST           /bookings
+GET/PUT/DELETE     /bookings/{booking_id}
+
+GET  /health       (Health check with counts)
+GET  /version      (Application version)
+GET  /logs         (Recent application logs)
+GET  /metrics      (Prometheus metrics)
+```
+
+## CI/CD Pipeline (13 Stages)
+
+```text
+1.  Versioning              → Read VERSION file, set image tag
+2.  Install Dependencies    → pip install requirements
+3.  Automated Tests         → pytest with verbose output
+4.  Dependency Validation   → pip check + package verification
+5.  Docker Build            → Multi-stage build + tagging
+6.  Trivy Security Scan     → HIGH/CRITICAL vulnerability scan
+7.  Image Verification      → Validate Docker image exists
+8.  Load Image to K8s       → Import into minikube/Docker Desktop
+9.  Deploy to Kubernetes    → Namespaces, policies, app, monitoring
+10. Health & API Validation → Verify endpoints respond correctly
+11. Monitoring Validation   → Confirm Prometheus, Grafana, Fluentd
+12. Rollback Capability     → Verify rollout history exists
+13. Start Services          → Port-forward for local access
+```
+
+On a failed pipeline after deployment, Jenkins automatically performs `kubectl rollout undo` for the Vehicle Rental deployment.
+
+## Rollback
+
+```bash
+# Rollback to previous revision
+kubectl rollout undo deployment/vehicle-rental-service -n vehicle-rental-system
+
+# Rollback to specific revision
+kubectl rollout undo deployment/vehicle-rental-service -n vehicle-rental-system --to-revision=2
+
+# View rollout history
+kubectl rollout history deployment/vehicle-rental-service -n vehicle-rental-system
+```
+
+## Artifact Versioning
+
+The application version is managed via the `VERSION` file at the project root. The version is:
+- Read by the Jenkinsfile to tag Docker images
+- Injected into Kubernetes deployment labels and annotations
+- Exposed via the `/version` API endpoint
+- Embedded in Kubernetes `change-cause` annotations for rollback tracking
+
+To release a new version:
+1. Update `VERSION` (e.g., `v1.1.0`)
+2. Commit and push – Jenkins handles the rest
+
+## Docker
+
+Multi-stage Dockerfile with security hardening:
+- **Builder stage** – installs Python dependencies
+- **Runtime stage** – copies only what's needed
+- **Non-root user** (`appuser`) – principle of least privilege
+- **HEALTHCHECK** – container-level health monitoring
+- **Minimal image** – `python:3.12-slim` base
+
+## Kubernetes Architecture
+
+| Resource | Namespace | Description |
 |---|---|---|
-| GET | `/`, `/health`, `/ready`, `/metrics` | Status, probes, Prometheus metrics |
-| POST / GET | `/vehicles` | Add vehicle / list (`?available=true`) |
-| GET / PUT / DELETE | `/vehicles/{id}` | Read, update, delete vehicle |
-| POST / GET | `/customers` | Add / list customers |
-| GET / PUT / DELETE | `/customers/{id}` | Read, update, delete customer |
-| POST / GET | `/bookings` | Create booking (cost = days x daily rate) / list |
-| GET | `/bookings/{id}` | Read booking |
-| POST | `/bookings/{id}/return` | Return vehicle (booking COMPLETED) |
-| POST | `/bookings/{id}/cancel` | Cancel booking |
+| Deployment (`vehicle-rental-service`) | `vehicle-rental-system` | 2 replicas, rolling updates |
+| Service (`vehicle-rental-service`) | `vehicle-rental-system` | ClusterIP, ports 1001/8000 |
+| NetworkPolicy | `vehicle-rental-system` | Pod-level ingress restriction |
+| ResourceQuota | `vehicle-rental-system` | Namespace resource limits |
+| HPA | `vehicle-rental-system` | Auto-scale 2→5 replicas |
+| Deployment (`prometheus`) | `monitoring` | Metrics collection |
+| Deployment (`grafana`) | `monitoring` | Dashboards |
+| DaemonSet (`fluentd`) | `monitoring` | Log aggregation |
+| ConfigMap (`prometheus-alerts`) | `monitoring` | Alerting rules |
 
-Swagger UI: `/docs`.
+## Monitoring
 
----
+### Prometheus
+- Scrapes `/metrics` every 15 seconds
+- Alerting rules for: service down, high error rate, high latency, high memory
 
-## Setup
+### Grafana
+- Pre-configured datasource (Prometheus)
+- Pre-built dashboard: Application Overview, Traffic & Throughput, HTTP Status & Resources, API Endpoint Metrics
+- Default credentials: `admin` / `admin`
 
-### 1. Put the project on GitHub
-```
-git init
-git add .
-git commit -m "Vehicle rental DevOps pipeline"
-git branch -M main
-git remote add origin https://github.com/<your-username>/vehicle-rental-devops.git
-git push -u origin main
-```
+### Logging
+- Application emits structured JSON logs to stdout
+- Fluentd DaemonSet collects container logs
+- Request-ID tracing via `X-Request-ID` header
+- In-app log buffer accessible via `/logs` endpoint
 
-### 2. Create the Jenkins job
-1. New Item -> **Pipeline** -> OK.
-2. Pipeline -> Definition: **Pipeline script from SCM** -> SCM: Git -> Repository URL: your GitHub URL -> Branch `*/main` -> Script Path `Jenkinsfile`.
-3. Save -> **Build Now** once (registers the parameters) -> then **Build with Parameters** and check `GIT_URL`.
-4. Optional automatic build: GitHub -> Settings -> Webhooks -> `http://<jenkins-host>:8080/github-webhook/`, and tick "GitHub hook trigger for GITScm polling" in the job.
+## Security
 
-### Prerequisites (same as the earlier build)
-Windows Jenkins with Git and Pipeline plugins, **Docker Desktop with Kubernetes enabled**, `kubectl`, Python 3.12+. Trivy runs as a Docker container, nothing extra to install.
+- **Trivy scanning** – scans Docker images for HIGH/CRITICAL CVEs
+- **Non-root container** – application runs as `appuser`
+- **Network policies** – restrict pod-to-pod traffic
+- **Resource quotas** – prevent resource exhaustion
+- **Resource limits** – per-container CPU/memory bounds
+- **CORS configuration** – configurable origin restrictions
 
----
+## Jenkins
 
-## CI/CD Pipeline Stages
+The Jenkinsfile is written for a Windows Jenkins agent and uses `bat` commands. Docker Desktop and a working Kubernetes context (minikube or Docker Desktop Kubernetes) are required.
 
-1. **Checkout from GitHub** – pulls `GIT_URL` / `GIT_BRANCH`.
-2. **Generate Artifact Version** – `v<VERSION>-<build>-<commit>`.
-3. **Install Dependencies** and **Run Tests** – pytest with a JUnit report.
-4. **Security Scan (code + dependencies)** – bandit and pip-audit (build turns UNSTABLE if issues are found).
-5. **Build Docker Image** – tagged with the version and `latest`.
-6. **Security Scan (image)** – Trivy HIGH/CRITICAL report, archived in Jenkins.
-7. **Save Versioned Artifact** – `vehicle-service-<tag>.tar` archived in Jenkins.
-8. **Prepare Kubernetes** and **Load Image** into the local cluster.
-9. **Deploy Vehicle Service** – `kubectl set image` to the new tag (old versions are kept in the rollout history).
-10. **Verify, Health, Metrics** checks and application logs.
-11. **Deploy Prometheus and Grafana**, then validate them.
-12. **Start Services** – port-forwards for the API and Grafana.
-13. **Automatic rollback** – if any stage fails after the deploy started, `kubectl rollout undo` restores the previous version.
+### Prerequisites
 
-## Access after a successful build
+- Python 3.12+
+- Docker Desktop (with Kubernetes enabled) or minikube
+- Jenkins with Pipeline plugin
+- Trivy CLI (`choco install trivy` or manual install)
+- kubectl configured with cluster access
 
-| Service | URL | Credentials |
-|---|---|---|
-| Swagger UI | http://localhost:8001/docs | None |
-| Health | http://localhost:8001/health | None |
-| Metrics | http://localhost:8001/metrics | None |
-| Grafana (dashboard "Vehicle Rental Monitoring") | http://localhost:8002 | `admin` / `admin` |
+## Running Tests Locally
 
-Create a vehicle, a customer and a booking in Swagger, and the Grafana panels (requests/sec, latency, status codes, 5xx, active bookings, bookings created, running version) start moving.
-
-## Rollback (manual)
-```
-kubectl rollout history deployment/vehicle-service -n vehicle-system
-scripts\rollback.bat          # previous version
-scripts\rollback.bat 3        # a specific revision
-```
-The running version is shown by `http://localhost:8001/health`.
-
-To demo a rollback: run the pipeline twice (two versions), then run `scripts\rollback.bat` and check `/health`.
-
-## Logs
-```
-kubectl logs -f deployment/vehicle-service -n vehicle-system
+```bash
+cd vehicle-rental-service
+pip install -r requirements.txt
+python -m pytest tests -v
 ```
 
-## Notes
-- SQLite lives inside the pod, so data resets when a new version is deployed (fine for a demo). Use PostgreSQL for real data.
-- Change the Grafana password (`GF_SECURITY_ADMIN_PASSWORD` in `kubernetes/monitoring/grafana.yaml`) outside a lab.
-- The pipeline does not push to Docker Hub; the image is loaded straight into the local Kubernetes cluster like the earlier build.
+## Running Locally (without Docker/K8s)
+
+```bash
+cd vehicle-rental-service
+pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```

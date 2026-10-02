@@ -1,5 +1,0 @@
--r requirements.txt
-pytest
-httpx
-bandit
-pip-audit

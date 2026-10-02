@@ -1,1 +1,0 @@
-"""Vehicle Rental Service package."""

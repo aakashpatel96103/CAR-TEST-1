@@ -1,6 +1,7 @@
 fastapi
 uvicorn[standard]
-sqlalchemy
-pydantic[email]
+pydantic
 prometheus-client
 prometheus-fastapi-instrumentator
+pytest
+httpx

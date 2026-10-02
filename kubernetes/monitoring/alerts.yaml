@@ -1,0 +1,56 @@
+# Prometheus alerting rules for vehicle-rental-service
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-alerts
+  namespace: monitoring
+data:
+  alerts.yml: |
+    groups:
+      - name: vehicle-rental-alerts
+        rules:
+          # Alert if the service is down for more than 1 minute
+          - alert: ServiceDown
+            expr: up{job="vehicle-rental-service"} == 0
+            for: 1m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Vehicle Rental Service is DOWN"
+              description: "The vehicle-rental-service has been unreachable for more than 1 minute."
+
+          # Alert on high error rate (>5% 5xx responses in 5 minutes)
+          - alert: HighErrorRate
+            expr: >
+              sum(rate(http_requests_total{job="vehicle-rental-service", status=~"5.."}[5m]))
+              / sum(rate(http_requests_total{job="vehicle-rental-service"}[5m])) > 0.05
+            for: 2m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High HTTP error rate detected"
+              description: "More than 5% of requests are returning 5xx status codes."
+
+          # Alert on high latency (avg response time > 500ms for 5 minutes)
+          - alert: HighLatency
+            expr: >
+              (sum(rate(http_request_duration_seconds_sum{job="vehicle-rental-service"}[5m]))
+              / sum(rate(http_request_duration_seconds_count{job="vehicle-rental-service"}[5m]))) > 0.5
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High API latency detected"
+              description: "Average response time has exceeded 500ms for 5 minutes."
+
+          # Alert on high memory usage (>80% of limit)
+          - alert: HighMemoryUsage
+            expr: >
+              process_resident_memory_bytes{job="vehicle-rental-service"}
+              / 268435456 > 0.8
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High memory usage detected"
+              description: "Application memory usage exceeds 80% of the 256Mi limit."

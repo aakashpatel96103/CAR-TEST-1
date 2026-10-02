@@ -1,0 +1,74 @@
+# Fluentd DaemonSet for centralized log collection
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluentd-config
+  namespace: monitoring
+data:
+  fluent.conf: |
+    <source>
+      @type tail
+      path /var/log/containers/vehicle-rental-service*.log
+      pos_file /var/log/fluentd-vehicle-rental.log.pos
+      tag vehicle-rental.*
+      read_from_head true
+      <parse>
+        @type json
+        time_key timestamp
+        time_format %Y-%m-%dT%H:%M:%S
+        keep_time_key true
+      </parse>
+    </source>
+
+    <filter vehicle-rental.**>
+      @type record_transformer
+      <record>
+        cluster local
+        namespace vehicle-rental-system
+        application vehicle-rental-service
+      </record>
+    </filter>
+
+    <match vehicle-rental.**>
+      @type stdout
+    </match>
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: fluentd
+  namespace: monitoring
+  labels:
+    app: fluentd
+spec:
+  selector:
+    matchLabels:
+      app: fluentd
+  template:
+    metadata:
+      labels:
+        app: fluentd
+    spec:
+      containers:
+        - name: fluentd
+          image: fluent/fluentd:v1.16-1
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          volumeMounts:
+            - name: varlog
+              mountPath: /var/log
+              readOnly: true
+            - name: config
+              mountPath: /fluentd/etc
+      volumes:
+        - name: varlog
+          hostPath:
+            path: /var/log
+        - name: config
+          configMap:
+            name: fluentd-config
