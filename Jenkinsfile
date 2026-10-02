@@ -86,10 +86,14 @@ pipeline {
                     where trivy >nul 2>&1 && (
                         trivy image --severity HIGH,CRITICAL --exit-code 0 --format table %IMAGE%:%VER%
                     ) || (
-                        if exist "C:\\Users\\rYuk\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin\\trivy.exe" (
-                            "C:\\Users\\rYuk\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin\\trivy.exe" image --severity HIGH,CRITICAL --exit-code 0 --format table %IMAGE%:%VER%
+                        if exist "%LOCALAPPDATA%\\Programs\\DockerDesktop\\resources\\bin\\trivy.exe" (
+                            "%LOCALAPPDATA%\\Programs\\DockerDesktop\\resources\\bin\\trivy.exe" image --severity HIGH,CRITICAL --exit-code 0 --format table %IMAGE%:%VER%
+                        ) else if exist "%ProgramFiles%\\Docker\\Docker\\resources\\bin\\trivy.exe" (
+                            "%ProgramFiles%\\Docker\\Docker\\resources\\bin\\trivy.exe" image --severity HIGH,CRITICAL --exit-code 0 --format table %IMAGE%:%VER%
+                        ) else if exist "%ProgramData%\\chocolatey\\bin\\trivy.exe" (
+                            "%ProgramData%\\chocolatey\\bin\\trivy.exe" image --severity HIGH,CRITICAL --exit-code 0 --format table %IMAGE%:%VER%
                         ) else (
-                            echo Trivy CLI not found in PATH, skipping image scan.
+                            echo [INFO] Trivy not found in PATH or standard directories. Skipping vulnerability scan.
                         )
                     )
                     echo === Security scan complete ===
@@ -133,7 +137,13 @@ pipeline {
                         docker exec desktop-control-plane ctr -n k8s.io images import /k8s.tar
                         docker exec desktop-control-plane rm -f /k8s.tar
                     )
-                    del /f /q k8s.tar
+                    docker inspect kind-control-plane >nul 2>&1 && (
+                        echo Loading %IMAGE%:%VER% into kind-control-plane container...
+                        docker cp k8s.tar kind-control-plane:/k8s.tar
+                        docker exec kind-control-plane ctr -n k8s.io images import /k8s.tar
+                        docker exec kind-control-plane rm -f /k8s.tar
+                    )
+                    del /f /q k8s.tar 2>nul
                     echo === Image loaded successfully ===
                 '''
             }
