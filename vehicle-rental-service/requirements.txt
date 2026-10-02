@@ -5,3 +5,6 @@ prometheus-client
 prometheus-fastapi-instrumentator
 pytest
 httpx
+urllib3>=2.8.0
+msgpack>=1.2.1
+setuptools>=78.1.1
