@@ -53,6 +53,13 @@ pipeline {
                         docker exec desktop-control-plane ctr -n k8s.io images import /k8s.tar
                         docker exec desktop-control-plane rm -f /k8s.tar
                     )
+                    docker inspect kind-control-plane >nul 2>&1 && (
+                        echo Loading %IMAGE%:%VER% into kind-control-plane...
+                        docker cp k8s.tar kind-control-plane:/k8s.tar
+                        docker exec kind-control-plane ctr -n k8s.io images import /k8s.tar
+                        docker exec kind-control-plane rm -f /k8s.tar
+                    )
+                    where minikube >nul 2>&1 && minikube image load %IMAGE%:%VER% 2>nul
                     del /f /q k8s.tar 2>nul
 
                     kubectl apply -f kubernetes/namespace.yaml
@@ -61,12 +68,11 @@ pipeline {
                     kubectl apply -f kubernetes/vehicle-rental-service.yaml
                     kubectl apply -f kubernetes/monitoring/prometheus.yaml
                     kubectl apply -f kubernetes/monitoring/grafana.yaml
-                    kubectl apply -f kubernetes/monitoring/fluentd.yaml 2>nul || exit /b 0
 
                     kubectl rollout restart deployment/%APP% -n %NS%
                     kubectl rollout restart deployment/prometheus -n %MON%
-                    kubectl rollout status deployment/%APP% -n %NS% --timeout=120s
-                    kubectl rollout status deployment/prometheus -n %MON% --timeout=60s
+                    kubectl rollout status deployment/%APP% -n %NS% --timeout=180s
+                    kubectl rollout status deployment/prometheus -n %MON% --timeout=180s
                 '''
             }
         }

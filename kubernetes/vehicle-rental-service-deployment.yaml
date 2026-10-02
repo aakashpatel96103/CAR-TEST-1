@@ -6,16 +6,9 @@ metadata:
   labels:
     app: vehicle-rental-service
     version: "v1.0.0"
-  annotations:
-    kubernetes.io/change-cause: "Deploy v1.0.0"
 spec:
-  replicas: 2
+  replicas: 1
   revisionHistoryLimit: 5
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 1
-      maxUnavailable: 0
   selector:
     matchLabels:
       app: vehicle-rental-service
@@ -31,43 +24,15 @@ spec:
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
-          env:
-            - name: APP_VERSION
-              value: "v1.0.0"
-            - name: POD_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-            - name: POD_NAMESPACE
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.namespace
-          resources:
-            requests:
-              cpu: 100m
-              memory: 128Mi
-            limits:
-              cpu: 500m
-              memory: 256Mi
           readinessProbe:
             httpGet:
               path: /health
               port: 8000
             initialDelaySeconds: 5
             periodSeconds: 5
-            failureThreshold: 3
           livenessProbe:
             httpGet:
               path: /health
               port: 8000
             initialDelaySeconds: 10
             periodSeconds: 10
-            failureThreshold: 3
-          startupProbe:
-            httpGet:
-              path: /health
-              port: 8000
-            initialDelaySeconds: 3
-            periodSeconds: 3
-            failureThreshold: 10
-      terminationGracePeriodSeconds: 30
