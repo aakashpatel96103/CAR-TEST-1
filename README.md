@@ -69,22 +69,13 @@ GET  /logs         (Recent application logs)
 GET  /metrics      (Prometheus metrics)
 ```
 
-## CI/CD Pipeline (13 Stages)
+## CI/CD Pipeline
 
 ```text
-1.  Versioning              → Read VERSION file, set image tag
-2.  Install Dependencies    → pip install requirements
-3.  Automated Tests         → pytest with verbose output
-4.  Dependency Validation   → pip check + package verification
-5.  Docker Build            → Multi-stage build + tagging
-6.  Trivy Security Scan     → HIGH/CRITICAL vulnerability scan
-7.  Image Verification      → Validate Docker image exists
-8.  Load Image to K8s       → Import into minikube/Docker Desktop
-9.  Deploy to Kubernetes    → Namespaces, policies, app, monitoring
-10. Health & API Validation → Verify endpoints respond correctly
-11. Monitoring Validation   → Confirm Prometheus, Grafana, Fluentd
-12. Rollback Capability     → Verify rollout history exists
-13. Start Services          → Port-forward for local access
+1. Version & Test       → Read VERSION, install dependencies, run pytest
+2. Build & Scan         → Docker build with version tag & Trivy security scan
+3. Deploy to Kubernetes → Load image, deploy app & monitoring stack, verify rollout
+4. Start Services       → Port forward Prometheus (1000), App (1001), Grafana (1002)
 ```
 
 On a failed pipeline after deployment, Jenkins automatically performs `kubectl rollout undo` for the Vehicle Rental deployment.
