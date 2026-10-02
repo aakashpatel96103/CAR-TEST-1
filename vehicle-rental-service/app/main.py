@@ -5,6 +5,7 @@ import sys
 import time
 import uuid
 from collections import deque
+from contextlib import asynccontextmanager
 from itertools import count
 from typing import Dict, List
 
@@ -72,12 +73,23 @@ except FileNotFoundError:
     APP_VERSION = os.getenv("APP_VERSION", "v1.0.0")
 
 # ---------------------------------------------------------------------------
+# Lifecycle manager
+# ---------------------------------------------------------------------------
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Vehicle Rental Service starting – version=%s", APP_VERSION)
+    yield
+    logger.info("Vehicle Rental Service shutting down")
+
+
+# ---------------------------------------------------------------------------
 # FastAPI application
 # ---------------------------------------------------------------------------
 app = FastAPI(
     title="Vehicle Rental System API",
     description="REST API for vehicles, customers and rental bookings with Prometheus observability.",
     version=APP_VERSION,
+    lifespan=lifespan,
 )
 
 # CORS
@@ -153,17 +165,7 @@ class Booking(BaseModel):
     status: str = "confirmed"
 
 
-# ---------------------------------------------------------------------------
-# Lifecycle events
-# ---------------------------------------------------------------------------
-@app.on_event("startup")
-async def on_startup():
-    logger.info("Vehicle Rental Service starting – version=%s", APP_VERSION)
 
-
-@app.on_event("shutdown")
-async def on_shutdown():
-    logger.info("Vehicle Rental Service shutting down")
 
 
 # ---------------------------------------------------------------------------

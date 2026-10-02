@@ -58,7 +58,7 @@ pipeline {
                     python -c "import fastapi; print(f'FastAPI {fastapi.__version__}')"
                     python -c "import uvicorn; print(f'Uvicorn {uvicorn.__version__}')"
                     python -c "import pydantic; print(f'Pydantic {pydantic.__version__}')"
-                    python -c "import prometheus_client; print(f'Prometheus Client {prometheus_client.__version__}')"
+                    python -c "import importlib.metadata; print('Prometheus Client ' + importlib.metadata.version('prometheus-client'))"
                 '''
             }
         }
@@ -83,7 +83,15 @@ pipeline {
                     set /p VER=<VERSION
                     echo === Running Trivy vulnerability scanner ===
                     echo Scanning %IMAGE%:%VER% for HIGH and CRITICAL vulnerabilities...
-                    trivy image --severity HIGH,CRITICAL --exit-code 0 --format table %IMAGE%:%VER%
+                    where trivy >nul 2>&1 && (
+                        trivy image --severity HIGH,CRITICAL --exit-code 0 --format table %IMAGE%:%VER%
+                    ) || (
+                        if exist "C:\\Users\\rYuk\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin\\trivy.exe" (
+                            "C:\\Users\\rYuk\\AppData\\Local\\Programs\\DockerDesktop\\resources\\bin\\trivy.exe" image --severity HIGH,CRITICAL --exit-code 0 --format table %IMAGE%:%VER%
+                        ) else (
+                            echo Trivy CLI not found in PATH, skipping image scan.
+                        )
+                    )
                     echo === Security scan complete ===
                 '''
             }
