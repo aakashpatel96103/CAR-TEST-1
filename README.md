@@ -15,10 +15,10 @@ A FastAPI-based Vehicle Rental System with vehicles, customers and bookings, aut
 - Application log viewer (`/logs`)
 - Prometheus metrics endpoint (`/metrics`)
 - Structured JSON logging with request-ID tracing
-- Pytest automated test suite (17+ tests)
+- Pytest automated test suite (18 tests)
 - Multi-stage Docker build with non-root user
 - Docker image versioning via `VERSION` file
-- Jenkins CI/CD pipeline (13 stages)
+- Jenkins CI/CD pipeline (9 stages)
 - Trivy HIGH/CRITICAL security scanning
 - Kubernetes deployment with readiness/liveness/startup probes
 - Rolling update strategy with zero-downtime deploys
@@ -69,16 +69,25 @@ GET  /logs         (Recent application logs)
 GET  /metrics      (Prometheus metrics)
 ```
 
-## CI/CD Pipeline
+## CI/CD Pipeline (9 Stages)
 
 ```text
-1. Version & Test       → Read VERSION, install dependencies, run pytest
-2. Build & Scan         → Docker build with version tag & Trivy security scan
-3. Deploy to Kubernetes → Load image, deploy app & monitoring stack, verify rollout
-4. Start Services       → Port forward Prometheus (1000), App (1001), Grafana (1002)
+1. Preflight: Docker & Minikube  → Verify Docker, auto-start Minikube if stopped
+2. Version & Test                → Read VERSION, install deps, run 18 pytest tests
+3. Build Docker Image            → Multi-stage build with version tag + latest tag
+4. Security Scan (Trivy)         → Scan image for HIGH/CRITICAL CVEs
+5. Artifact Versioning           → Stamp version into K8s deployment manifests
+6. Load Image into Minikube      → docker save → docker cp → ctr import
+7. Deploy to Kubernetes          → Apply all manifests (app + monitoring + policies)
+8. Verify & Rollout History      → Show pods, services, HPA, rollout history
+9. Start Services                → Port-forward Prometheus(1000), API(1001), Grafana(1002)
 ```
 
 On a failed pipeline after deployment, Jenkins automatically performs `kubectl rollout undo` for the Vehicle Rental deployment.
+
+### Automation
+
+Jenkins is configured with `pollSCM('H/2 * * * *')` — it automatically polls GitHub every ~2 minutes and triggers a new build whenever changes are detected. Simply push to `main` and the full pipeline runs automatically.
 
 ## Rollback
 
@@ -96,75 +105,93 @@ kubectl rollout history deployment/vehicle-rental-service -n vehicle-rental-syst
 ## Artifact Versioning
 
 The application version is managed via the `VERSION` file at the project root. The version is:
-- Read by the Jenkinsfile to tag Docker images
-- Injected into Kubernetes deployment labels and annotations
+- Read by the Jenkinsfile to tag Docker images (`vehicle-rental-service:v1.0.0`)
+- Dynamically injected into Kubernetes deployment labels, annotations and image tags
 - Exposed via the `/version` API endpoint
 - Embedded in Kubernetes `change-cause` annotations for rollback tracking
+- Passed as `APP_VERSION` environment variable to the container
 
 To release a new version:
 1. Update `VERSION` (e.g., `v1.1.0`)
-2. Commit and push – Jenkins handles the rest
+2. Commit and push – Jenkins handles the rest automatically
 
 ## Docker
 
 Multi-stage Dockerfile with security hardening:
-- **Builder stage** – installs Python dependencies
-- **Runtime stage** – copies only what's needed
+- **Builder stage** – installs Python dependencies into isolated prefix
+- **Runtime stage** – copies only installed packages (no pip/setuptools in final image)
 - **Non-root user** (`appuser`) – principle of least privilege
-- **HEALTHCHECK** – container-level health monitoring
-- **Minimal image** – `python:3.12-slim` base
+- **HEALTHCHECK** – container-level health monitoring via `/health`
+- **Minimal image** – `python:3.12-alpine` base (~50MB)
+
+```bash
+# Build manually
+docker build -t vehicle-rental-service:v1.0.0 vehicle-rental-service
+
+# Run manually
+docker run -p 8000:8000 vehicle-rental-service:v1.0.0
+```
 
 ## Kubernetes Architecture
 
 | Resource | Namespace | Description |
 |---|---|---|
-| Deployment (`vehicle-rental-service`) | `vehicle-rental-system` | 2 replicas, rolling updates |
+| Deployment (`vehicle-rental-service`) | `vehicle-rental-system` | 2 replicas, rolling updates, resource limits |
 | Service (`vehicle-rental-service`) | `vehicle-rental-system` | ClusterIP, ports 1001/8000 |
 | NetworkPolicy | `vehicle-rental-system` | Pod-level ingress restriction |
-| ResourceQuota | `vehicle-rental-system` | Namespace resource limits |
-| HPA | `vehicle-rental-system` | Auto-scale 2→5 replicas |
-| Deployment (`prometheus`) | `monitoring` | Metrics collection |
-| Deployment (`grafana`) | `monitoring` | Dashboards |
-| DaemonSet (`fluentd`) | `monitoring` | Log aggregation |
-| ConfigMap (`prometheus-alerts`) | `monitoring` | Alerting rules |
+| ResourceQuota | `vehicle-rental-system` | Namespace CPU/memory limits |
+| HPA | `vehicle-rental-system` | Auto-scale 2→5 replicas (CPU 70%, Memory 80%) |
+| Deployment (`prometheus`) | `monitoring` | Metrics collection + alerting rules |
+| Deployment (`grafana`) | `monitoring` | Pre-configured dashboards |
+| DaemonSet (`fluentd`) | `monitoring` | Centralized log aggregation |
 
 ## Monitoring
 
 ### Prometheus
 - Scrapes `/metrics` every 15 seconds
-- Alerting rules for: service down, high error rate, high latency, high memory
+- Evaluates alerting rules every 15 seconds
+- Alerting rules for: service down, high error rate (>5% 5xx), high latency (>500ms), high memory (>80%)
 
 ### Grafana
 - Pre-configured datasource (Prometheus)
-- Pre-built dashboard: Application Overview, Traffic & Throughput, HTTP Status & Resources, API Endpoint Metrics
+- Pre-built 13-panel dashboard:
+  - **Application Overview** — Service status, total requests, avg latency, memory usage
+  - **Traffic & Throughput** — Request rate (QPS), per-endpoint traffic
+  - **HTTP Status & Resources** — Status code distribution, latency by endpoint, CPU utilization
+  - **API Endpoint Metrics** — Activity summary table, live endpoint traffic
+  - **System Probes** — Health check count, Prometheus scrape count
 - Default credentials: `admin` / `admin`
 
 ### Logging
 - Application emits structured JSON logs to stdout
-- Fluentd DaemonSet collects container logs
-- Request-ID tracing via `X-Request-ID` header
-- In-app log buffer accessible via `/logs` endpoint
+- Fluentd DaemonSet collects container logs from `/var/log/containers/`
+- Request-ID tracing via `X-Request-ID` header (auto-generated UUID)
+- Response time tracking via `X-Response-Time-ms` header
+- In-app log buffer (last 200 entries) accessible via `/logs` endpoint
 
 ## Security
 
-- **Trivy scanning** – scans Docker images for HIGH/CRITICAL CVEs
-- **Non-root container** – application runs as `appuser`
-- **Network policies** – restrict pod-to-pod traffic
-- **Resource quotas** – prevent resource exhaustion
-- **Resource limits** – per-container CPU/memory bounds
+- **Trivy scanning** – scans Docker images for HIGH/CRITICAL CVEs in CI pipeline
+- **Non-root container** – application runs as `appuser` (not root)
+- **Multi-stage build** – no build tools (pip/setuptools) in production image
+- **Network policies** – restrict pod ingress to same namespace + monitoring only
+- **Resource quotas** – namespace-level CPU/memory caps prevent resource exhaustion
+- **Resource limits** – per-container CPU (500m) / memory (256Mi) bounds
 - **CORS configuration** – configurable origin restrictions
+- **HEALTHCHECK** – Docker-level container health monitoring
 
 ## Jenkins
 
-The Jenkinsfile is written for a Windows Jenkins agent and uses `bat` commands. Docker Desktop and a working Kubernetes context (minikube or Docker Desktop Kubernetes) are required.
+The Jenkinsfile is written for a Windows Jenkins agent and uses `bat` commands. Docker Desktop and Minikube are required (Minikube is auto-started by the pipeline if not running).
 
 ### Prerequisites
 
 - Python 3.12+
-- Docker Desktop (with Kubernetes enabled) or minikube
+- Docker Desktop
+- Minikube (`choco install minikube`)
 - Jenkins with Pipeline plugin
-- Trivy CLI (`choco install trivy` or manual install)
 - kubectl configured with cluster access
+- Trivy CLI (optional: `choco install trivy`)
 
 ## Running Tests Locally
 
